@@ -56,9 +56,7 @@ urlencode() {
 check_tunnel() {
 	local domain="$1"
 	local url="https://${domain}${WSPATH}"
-	local response
-
-	response=$(curl -sk --max-time 10 "$url" 2>/dev/null)
+	local response=$(curl -sk --max-time 10 "$url" 2>/dev/null)
 	local exit_code=$?
 
 	if [[ $exit_code -ne 0 ]]; then
@@ -142,12 +140,9 @@ install() {
 	fi
 
 	# получаем домен
-	local domain
-	domain=$(get_current_domain)
+	local domain=$(get_current_domain)
 	if [[ -z "$domain" ]]; then
 		echo "Ошибка: Не удалось извлечь домен из вывода vk-tunnel"
-		echo "Содержимое лога:"
-		cat "$LOG_FILE"
 		exit 1
 	fi
 
@@ -156,18 +151,18 @@ install() {
 	write_config
 
 	# добавляем в cron
-	local script_path
-	script_path=$(realpath "$0")
-	(crontab -l 2>/dev/null | grep -v "$script_path"; echo "* * * * * /bin/bash $script_path --watchdog") | crontab -
+	# local script_path
+	# script_path=$(realpath "$0")
+	# (crontab -l 2>/dev/null | grep -v "$script_path"; echo "* * * * * /bin/bash $script_path --watchdog") | crontab -
 
-	echo "Установка завершена. Watchdog добавлен в cron"
+	# echo "Установка завершена. Watchdog добавлен в cron"
 	echo "Логи: $LOG_FILE"
 
 	# URL encode для WSPATH
-	encoded_wspath=$(urlencode "$WSPATH")
+	local encoded_wspath=$(urlencode "$WSPATH")
 
 	# формируем vless ссылку
-	vless_link="vless://${UUID}@${$domain}:443/?type=ws&path=${$encoded_wspath}&security=tls#vk-tunnel"
+	local vless_link="vless://${UUID}@${domain}:443/?type=ws&path=${encoded_wspath}&security=tls#vk-tunnel"
 
 	echo ""
 	echo "=== Vless-ссылка ==="
