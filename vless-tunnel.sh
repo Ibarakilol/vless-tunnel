@@ -106,11 +106,32 @@ start_vk_tunnel() {
 	local vk_pid=$(pgrep -f "vk-tunnel --port=$INBOUNDPORT")
 	if [[ -z "$vk_pid" ]]; then
 		echo "Ошибка: vk-tunnel не запустился"
-		return 1
+		exit 1
 	fi
 
 	echo "vk-tunnel запущен (PID: $vk_pid)"
-	return 0
+
+	local domain=$(get_current_domain)
+	if [[ -z "$domain" ]]; then
+		echo "Ошибка: Не удалось извлечь домен из вывода vk-tunnel"
+		exit 1
+	fi
+
+	# URL encode для WSPATH
+	local encoded_wspath=$(urlencode "$WSPATH")
+
+	# формируем vless ссылку
+	local vless_link="vless://${UUID}@${domain}:443/?type=ws&path=${encoded_wspath}&security=tls#vk-tunnel"
+
+	echo ""
+	echo "=== Vless-ссылка ==="
+	echo "$vless_link"
+	echo ""
+	echo "=== QR код ==="
+	qrencode -t UTF8 "$vless_link"
+	echo ""
+
+	echo "$domain"
 }
 
 # процесс установки
@@ -134,43 +155,19 @@ install() {
 	# сохраняем конфиг
 	write_config
 
-	# запускаем vk-tunnel
-	if ! start_vk_tunnel; then
-		exit 1
-	fi
-
-	# получаем домен
-	local domain=$(get_current_domain)
-	if [[ -z "$domain" ]]; then
-		echo "Ошибка: Не удалось извлечь домен из вывода vk-tunnel"
-		exit 1
-	fi
+	# запускаем vk-tunnel и получаем домен
+	local domain=$(start_vk_tunnel)
 
 	# обновляем конфиг, вписываем в него последний домен
 	LAST_DOMAIN="$domain"
 	write_config
 
 	# добавляем в cron
-	# local script_path
-	# script_path=$(realpath "$0")
-	# (crontab -l 2>/dev/null | grep -v "$script_path"; echo "* * * * * /bin/bash $script_path --watchdog") | crontab -
+	# echo "Добавление в cron: $script_path"
+	# (crontab -l 2>/dev/null | grep -v "$script_path"; echo "* * * * * /bin/bash '$script_path' --watch") | crontab -
+	# echo "Задача добавлена в cron"
 
-	# echo "Установка завершена. Watchdog добавлен в cron"
-	echo "Логи: $LOG_FILE"
-
-	# URL encode для WSPATH
-	local encoded_wspath=$(urlencode "$WSPATH")
-
-	# формируем vless ссылку
-	local vless_link="vless://${UUID}@${domain}:443/?type=ws&path=${encoded_wspath}&security=tls#vk-tunnel"
-
-	echo ""
-	echo "=== Vless-ссылка ==="
-	echo "$vless_link"
-	echo ""
-	echo "=== QR код ==="
-	qrencode -t UTF8 "$vless_link"
-	echo ""
+	echo "Установка завершена. Логи: $LOG_FILE"
 }
 
 # надзорный скрипт watchdog
@@ -190,26 +187,18 @@ watchdog() {
 
 	echo "Обнаружена проблема с туннелем. Перезапуск..."
 
-	# рестарт туннеля
-	if ! start_vk_tunnel; then
-		echo "Критическая ошибка: не удалось перезапустить vk-tunnel"
-		exit 1
-	fi
-
-	# смотрим на то, какой домен выдал вк
-	local new_domain
-	new_domain=$(get_current_domain)
-
-	if [[ -z "$new_domain" ]]; then
-		echo "Ошибка: не удалось получить новый домен"
-		exit 1
-	fi
+	# рестарт туннеля и смотрим на то, какой домен выдал вк
+	local new_domain=$(start_vk_tunnel)
 
 	echo "Новый домен: $new_domain"
 
-	# если домен изменился, обновляем файл подписки
+	# если домен изменился, обновляем файл конфиг
 	if [[ "$new_domain" != "$LAST_DOMAIN" ]]; then
 		echo "Домен изменился"
+
+		LAST_DOMAIN="$new_domain"
+		write_config
+		echo "Конфигурационный файл успешно обновлен"
 	else
 		echo "Домен не изменился"
 	fi
@@ -229,7 +218,7 @@ run_tunnel() {
 
 # логика
 case "${1:-}" in
-	"--watchdog")
+	"--watch")
 		watchdog
 		;;
 	"--run")
@@ -239,7 +228,7 @@ case "${1:-}" in
 		echo "Использование: $0 [OPTION]"
 		echo ""
 		echo "Опции:"
-		echo "  --watchdog       Запуск надзорного скрипта watchdog (для cron)"
+		echo "  --watch       Запуск надзорного скрипта watchdog (для cron)"
 		echo "  --run            Запуск туннеля с конфигурацией"
 		echo ""
 		echo "Пример: $0 --run"
