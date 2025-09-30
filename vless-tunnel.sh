@@ -89,6 +89,12 @@ upload_to_yandex_cloud() {
 
 	if aws --endpoint-url=https://storage.yandexcloud.net s3 cp "/tmp/$SUBSCRIPTION_FILE" "s3://$BUCKET_NAME/" --cache-control "no-store" > /dev/null 2>&1; then
 		local file_url="https://storage.yandexcloud.net/$BUCKET_NAME/$SUBSCRIPTION_FILE"
+
+		echo ""
+		echo "================Файл подписки успешно загружен=================="
+		echo "$file_url"
+		echo "================================================================"
+		echo ""
 	else
 		echo "Ошибка загрузки файла в бакет"
 		return 1
@@ -263,12 +269,6 @@ install() {
 	echo "Задача добавлена в cron. Посмотреть можно через: crontab -e"
 
 	echo "Установка завершена. Логи: $LOG_FILE"
-
-	echo ""
-	echo "================Файл подписки успешно загружен=================="
-	echo "$file_url"
-	echo "================================================================"
-	echo ""
 }
 
 # надзорный скрипт watchdog
