@@ -87,20 +87,6 @@ get_current_domain() {
 	echo "$domain"
 }
 
-get_vless_link() {
-	local domain="$1"
-	local encoded_wspath=$(urlencode "$WSPATH")
-	local vless_link="vless://${UUID}@${domain}:443/?type=ws&path=${encoded_wspath}&security=tls#vk-tunnel"
-
-	echo ""
-	echo "=== Vless-ссылка ==="
-	echo "$vless_link"
-	echo ""
-	echo "=== QR код ==="
-	qrencode -t UTF8 "$vless_link"
-	echo ""
-}
-
 # запускаем туннель
 start_vk_tunnel() {
 	# проверяем, установлен ли vk-tunnel
@@ -144,6 +130,21 @@ start_vk_tunnel() {
 	fi
 
 	echo "vk-tunnel запущен (PID: $vk_pid)"
+
+	# URL encode для WSPATH
+	local encoded_wspath=$(urlencode "$WSPATH")
+
+	# формируем vless ссылку
+	local vless_link="vless://${UUID}@${domain}:443/?type=ws&path=${encoded_wspath}&security=tls#vk-tunnel"
+
+	echo ""
+	echo "=== Vless-ссылка ==="
+	echo "$vless_link"
+	echo ""
+	echo "=== QR код ==="
+	qrencode -t UTF8 "$vless_link"
+	echo ""
+
 	return 0
 }
 
