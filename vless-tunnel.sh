@@ -15,9 +15,9 @@ install_dependencies() {
 	apt-get install curl cron unzip -y
 
 	# скачивание и установка AWS CLI v2
-	curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
-	unzip /tmp/awscliv2.zip
-	./tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws/
+	curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+	unzip awscliv2.zip
+	./aws/install && rm -rf awscliv2.zip aws/
 }
 
 # настройка awscli для s3 яндекса
