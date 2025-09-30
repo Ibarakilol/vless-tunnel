@@ -87,6 +87,20 @@ get_current_domain() {
 	echo "$domain"
 }
 
+get_vless_link() {
+	local domain="$1"
+	local encoded_wspath=$(urlencode "$WSPATH")
+	local vless_link="vless://${UUID}@${domain}:443/?type=ws&path=${encoded_wspath}&security=tls#vk-tunnel"
+
+	echo ""
+	echo "=== Vless-ссылка ==="
+	echo "$vless_link"
+	echo ""
+	echo "=== QR код ==="
+	qrencode -t UTF8 "$vless_link"
+	echo ""
+}
+
 # запускаем туннель
 start_vk_tunnel() {
 	# проверяем, установлен ли vk-tunnel
@@ -101,37 +115,36 @@ start_vk_tunnel() {
 	sleep 2
 
 	vk-tunnel --port="$INBOUNDPORT" > "$LOG_FILE" 2>&1 &
-	sleep 10 # если сервер медленный или вк лагает, возможно нужно будет поставить сюда 15 или 20
+
+	# цикл проверки домена
+	echo "Ожидание появления домена в логах..."
+	local domain
+
+	for ((i=1; i<=30; i++)); do
+		sleep 1
+		domain=$(get_current_domain)
+
+		if [[ -n "$domain" ]]; then
+			echo "Домен найден: $domain (попытка $i/30)"
+			break
+		fi
+
+		echo "Домен еще не появился в логах... (попытка $i/30)"
+	done
+
+	if [[ -z "$domain" ]]; then
+		echo "Ошибка: домен не найден в логах после 30 секунд ожидания"
+		return 1
+	fi
 
 	local vk_pid=$(pgrep -f "vk-tunnel --port=$INBOUNDPORT")
 	if [[ -z "$vk_pid" ]]; then
 		echo "Ошибка: vk-tunnel не запустился"
-		exit 1
+		return 1
 	fi
 
 	echo "vk-tunnel запущен (PID: $vk_pid)"
-
-	local domain=$(get_current_domain)
-	if [[ -z "$domain" ]]; then
-		echo "Ошибка: Не удалось извлечь домен из вывода vk-tunnel"
-		exit 1
-	fi
-
-	# URL encode для WSPATH
-	local encoded_wspath=$(urlencode "$WSPATH")
-
-	# формируем vless ссылку
-	local vless_link="vless://${UUID}@${domain}:443/?type=ws&path=${encoded_wspath}&security=tls#vk-tunnel"
-
-	echo ""
-	echo "=== Vless-ссылка ==="
-	echo "$vless_link"
-	echo ""
-	echo "=== QR код ==="
-	qrencode -t UTF8 "$vless_link"
-	echo ""
-
-	echo "$domain"
+	return 0
 }
 
 # процесс установки
@@ -155,8 +168,18 @@ install() {
 	# сохраняем конфиг
 	write_config
 
-	# запускаем vk-tunnel и получаем домен
-	local domain=$(start_vk_tunnel)
+	# запускаем vk-tunnel
+	if ! start_vk_tunnel; then
+		exit 1
+	fi
+
+	# получаем домен
+	local domain=$(get_current_domain)
+
+	if [[ -z "$domain" ]]; then
+		echo "Ошибка: не удалось получить домен vk-tunnel"
+		exit 1
+	fi
 
 	# обновляем конфиг, вписываем в него последний домен
 	LAST_DOMAIN="$domain"
@@ -187,8 +210,18 @@ watchdog() {
 
 	echo "Обнаружена проблема с туннелем. Перезапуск..."
 
-	# рестарт туннеля и смотрим на то, какой домен выдал вк
-	local new_domain=$(start_vk_tunnel)
+	# рестарт туннеля
+	if ! start_vk_tunnel; then
+		exit 1
+	fi
+
+	# смотрим на то, какой домен выдал вк
+	local new_domain=$(get_current_domain)
+
+	if [[ -z "$new_domain" ]]; then
+		echo "Ошибка: не удалось получить новый домен"
+		exit 1
+	fi
 
 	echo "Новый домен: $new_domain"
 

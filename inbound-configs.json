@@ -1,0 +1,30 @@
+{
+  "id": 1,
+  "userId": 0,
+  "up": 0,
+  "down": 0,
+  "total": 0,
+  "remark": "vk-tunnel",
+  "enable": true,
+  "expiryTime": 0,
+  "listen": "",
+  "port": 12345,
+  "protocol": "vless",
+  "settings": "{\n  \"clients\": [\n    {\n      \"id\": \"1b88747a-7184-4d6e-88e3-f888e2664f34\",\n      \"flow\": \"\",\n      \"email\": \"m4mcjo2c\",\n      \"limitIp\": 0,\n      \"totalGB\": 0,\n      \"expiryTime\": 0,\n      \"enable\": true,\n      \"tgId\": \"\",\n      \"subId\": \"bzn88wh9ioao355m\",\n      \"comment\": \"\",\n      \"reset\": 0\n    }\n  ],\n  \"decryption\": \"none\",\n  \"fallbacks\": []\n}",
+  "streamSettings": "{\n  \"network\": \"ws\",\n  \"security\": \"none\",\n  \"externalProxy\": [],\n  \"wsSettings\": {\n    \"acceptProxyProtocol\": false,\n    \"path\": \"/\",\n    \"host\": \"\",\n    \"headers\": {},\n    \"heartbeatPeriod\": 0\n  }\n}",
+  "tag": "inbound-12345",
+  "sniffing": "{\n  \"enabled\": false,\n  \"destOverride\": [\n    \"http\",\n    \"tls\",\n    \"quic\",\n    \"fakedns\"\n  ],\n  \"metadataOnly\": false,\n  \"routeOnly\": false\n}",
+  "clientStats": [
+    {
+      "id": 1,
+      "inboundId": 1,
+      "enable": true,
+      "email": "vk-tunnel",
+      "up": 0,
+      "down": 0,
+      "expiryTime": 0,
+      "total": 0,
+      "reset": 0
+    }
+  ]
+}
