@@ -1,15 +1,43 @@
 #!/bin/bash
 
 # конфиг и лог файл
-CONFIG_FILE="$(dirname "$0")/settings.conf"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="$SCRIPT_DIR/settings.conf"
 LOG_FILE="/tmp/vk-tunnel.log"
+SUBSCRIPTION_FILE="tunnel.txt"
+WSPATH="/"
 
 # установка компонентов
 install_dependencies() {
 	echo "Установка зависимостей..."
 
 	apt update # && apt upgrade -y
-	apt-get install qrencode bash curl cron -y
+	apt-get install curl cron unzip -y
+
+	# скачивание и установка AWS CLI v2
+	curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
+	unzip /tmp/awscliv2.zip
+	./tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws/
+}
+
+# настройка awscli для s3 яндекса
+configure_aws() {
+	echo "Настройка AWS CLI для Yandex.Cloud..."
+	mkdir -p ~/.aws
+
+	cat > ~/.aws/config << EOF
+[default]
+region=ru-central1
+output=json
+EOF
+
+	cat > ~/.aws/credentials << EOF
+[default]
+aws_access_key_id=$SA_ACCESS_KEY_ID
+aws_secret_access_key=$SA_SECRET_ACCESS_KEY
+EOF
+
+	chmod 600 ~/.aws/credentials
 }
 
 # читаем конфиг
@@ -27,11 +55,50 @@ write_config() {
 	cat > "$CONFIG_FILE" << EOF
 UUID="$UUID"
 INBOUNDPORT="$INBOUNDPORT"
-WSPATH="$WSPATH"
+BUCKET_NAME="$BUCKET_NAME"
+SA_ACCESS_KEY_ID="$SA_ACCESS_KEY_ID"
+SA_SECRET_ACCESS_KEY="$SA_SECRET_ACCESS_KEY"
 LAST_DOMAIN="$LAST_DOMAIN"
 EOF
 
 	chmod 600 "$CONFIG_FILE"
+}
+
+# создаём txt-файл подписки
+create_subscription_file() {
+	local domain="$1"
+	local encoded_wspath=$(urlencode "$WSPATH")
+	local vless_link="vless://${UUID}@${domain}:443?type=ws&path=${encoded_wspath}&security=tls#${domain}"
+
+	cat > "/tmp/$SUBSCRIPTION_FILE" << EOF
+#profile-update-interval: 1
+#profile-title: base64:ZWFzeS12ay10dW5uZWw=
+$vless_link
+EOF
+
+	echo "Файл подписки создан: /tmp/$SUBSCRIPTION_FILE"
+}
+
+# загружаем подписку в s3 яндекса
+upload_to_yandex_cloud() {
+	local domain="$1"
+
+	create_subscription_file "$domain"
+
+	echo "Загрузка файла подписки в бакет $BUCKET_NAME..."
+
+	if aws --endpoint-url=https://storage.yandexcloud.net s3 cp "/tmp/$SUBSCRIPTION_FILE" "s3://$BUCKET_NAME/" --cache-control "no-store" > /dev/null 2>&1; then
+		local file_url="https://storage.yandexcloud.net/$BUCKET_NAME/$SUBSCRIPTION_FILE"
+		echo ""
+		echo "================Файл подписки успешно загружен=================="
+		echo "$file_url"
+		echo "=============================================="
+		echo ""
+		echo "Добавьте его в своё VLESS-приложение, как подписку. Далее надзорный скрипт watchdog будет сам следить за работоспособностью туннеля, перезагружать его и автоматически менять домен в подписке"
+	else
+		echo "Ошибка загрузки файла в бакет"
+		return 1
+	fi
 }
 
 # функция для URL encoding
@@ -124,6 +191,7 @@ start_vk_tunnel() {
 	fi
 
 	local vk_pid=$(pgrep -f "vk-tunnel --port=$INBOUNDPORT")
+
 	if [[ -z "$vk_pid" ]]; then
 		echo "Ошибка: vk-tunnel не запустился"
 		return 1
@@ -131,19 +199,12 @@ start_vk_tunnel() {
 
 	echo "vk-tunnel запущен (PID: $vk_pid)"
 
-	# URL encode для WSPATH
-	local encoded_wspath=$(urlencode "$WSPATH")
+	# создаём и загружаем txt подписки в s3 яндекса
+	local file_url=$(upload_to_yandex_cloud "$domain")
 
-	# формируем vless ссылку
-	local vless_link="vless://${UUID}@${domain}:443/?type=ws&path=${encoded_wspath}&security=tls#vk-tunnel"
-
-	echo ""
-	echo "=== Vless-ссылка ==="
-	echo "$vless_link"
-	echo ""
-	echo "=== QR код ==="
-	qrencode -t UTF8 "$vless_link"
-	echo ""
+	if [[ -z "$file_url" ]]; then
+		exit 1
+	fi
 
 	return 0
 }
@@ -158,13 +219,21 @@ install() {
 	echo "Введите порт инбаунда:"
 	read -r INBOUNDPORT
 
-	echo "Введите путь инбаунда (по умолчанию: /):"
-	read -r WSPATH
-	WSPATH="${WSPATH:-"/"}"
+	echo "Введите имя бакета:"
+	read -r BUCKET_NAME
+
+	echo "Введите идентификатор статического доступа сервисного аккаунта:"
+	read -r SA_ACCESS_KEY_ID
+
+	echo "Введите ключ статического доступа сервисного аккаунта:"
+	read -r SA_SECRET_ACCESS_KEY
 	echo
 
 	# установка зависимостей
 	install_dependencies
+
+	# настройка awscli
+	configure_aws
 
 	# сохраняем конфиг
 	write_config
@@ -187,9 +256,17 @@ install() {
 	write_config
 
 	# добавляем в cron
-	# echo "Добавление в cron: $script_path"
-	# (crontab -l 2>/dev/null | grep -v "$script_path"; echo "* * * * * /bin/bash '$script_path' --watch") | crontab -
-	# echo "Задача добавлена в cron"
+	local script_path="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
+
+	# Проверяем, существует ли файл скрипта
+	if [[ ! -f "$script_path" ]]; then
+		echo "Ошибка: скрипт не найден по пути: $script_path"
+		return 1
+	fi
+
+	echo "Добавление в cron: $script_path"
+	(crontab -l 2>/dev/null | grep -v "$script_path"; echo "* * * * * /bin/bash '$script_path' --watch") | crontab -
+	echo "Задача добавлена в cron. Посмотреть можно через: crontab -e"
 
 	echo "Установка завершена. Логи: $LOG_FILE"
 }
@@ -228,11 +305,14 @@ watchdog() {
 
 	# если домен изменился, обновляем файл конфиг
 	if [[ "$new_domain" != "$LAST_DOMAIN" ]]; then
-		echo "Домен изменился"
+		echo "Домен изменился. Обновление файла подписки..."
 
-		LAST_DOMAIN="$new_domain"
-		write_config
-		echo "Конфигурационный файл успешно обновлен"
+		if upload_to_yandex_cloud "$new_domain"; then
+			LAST_DOMAIN="$new_domain"
+			write_config
+
+			echo "Файл подписки успешно обновлен"
+		fi
 	else
 		echo "Домен не изменился"
 	fi
