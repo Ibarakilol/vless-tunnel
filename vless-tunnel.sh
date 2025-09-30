@@ -89,12 +89,6 @@ upload_to_yandex_cloud() {
 
 	if aws --endpoint-url=https://storage.yandexcloud.net s3 cp "/tmp/$SUBSCRIPTION_FILE" "s3://$BUCKET_NAME/" --cache-control "no-store" > /dev/null 2>&1; then
 		local file_url="https://storage.yandexcloud.net/$BUCKET_NAME/$SUBSCRIPTION_FILE"
-		echo ""
-		echo "================Файл подписки успешно загружен=================="
-		echo "$file_url"
-		echo "=============================================="
-		echo ""
-		echo "Добавьте его в своё VLESS-приложение, как подписку. Далее надзорный скрипт watchdog будет сам следить за работоспособностью туннеля, перезагружать его и автоматически менять домен в подписке"
 	else
 		echo "Ошибка загрузки файла в бакет"
 		return 1
@@ -199,13 +193,6 @@ start_vk_tunnel() {
 
 	echo "vk-tunnel запущен (PID: $vk_pid)"
 
-	# создаём и загружаем txt подписки в s3 яндекса
-	local file_url=$(upload_to_yandex_cloud "$domain")
-
-	if [[ -z "$file_url" ]]; then
-		exit 1
-	fi
-
 	return 0
 }
 
@@ -255,6 +242,13 @@ install() {
 	LAST_DOMAIN="$domain"
 	write_config
 
+	# создаём и загружаем txt подписки в s3 яндекса
+	local file_url=$(upload_to_yandex_cloud "$domain")
+
+	if [[ -z "$file_url" ]]; then
+		exit 1
+	fi
+
 	# добавляем в cron
 	local script_path="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
 
@@ -269,6 +263,12 @@ install() {
 	echo "Задача добавлена в cron. Посмотреть можно через: crontab -e"
 
 	echo "Установка завершена. Логи: $LOG_FILE"
+
+	echo ""
+	echo "================Файл подписки успешно загружен=================="
+	echo "$file_url"
+	echo "================================================================"
+	echo ""
 }
 
 # надзорный скрипт watchdog
