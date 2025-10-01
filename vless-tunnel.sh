@@ -7,6 +7,12 @@ LOG_FILE="/tmp/vk-tunnel.log"
 SUBSCRIPTION_FILE="tunnel.txt"
 WSPATH="/"
 
+# логи
+log() {
+	echo "[$(date '+%F %T')] $1" >> "$LOG_FILE"
+	echo "$1"
+}
+
 # установка компонентов
 install_dependencies() {
 	echo "Установка зависимостей..."
@@ -123,19 +129,30 @@ urlencode() {
 check_tunnel() {
 	local domain="$1"
 	local url="https://${domain}${WSPATH}"
-	local response=$(curl -sk --max-time 10 "$url" 2>/dev/null)
+	local response=$(curl -sk \
+			--connect-timeout 5 \
+			--max-time 8 \
+			--retry 2 \
+			--retry-delay 1 \
+			--retry-max-time 10 \
+			"$url" 2>/dev/null)
 	local exit_code=$?
 
 	if [[ $exit_code -ne 0 ]]; then
-		echo "Ошибка проверки туннеля (curl exit code: $exit_code)"
+		log "Ошибка проверки туннеля (curl exit code: $exit_code)"
 		return 1
 	fi
 
 	if echo "$response" | grep -q "Bad Request"; then
-		echo "Туннель работает нормально ($domain)"
+		log "Туннель работает нормально ($domain)"
 		return 0
 	else
-		echo "Проблема с туннелем ($domain). Ответ: $response"
+		if echo "$response" | grep -q "there is no tunnel connection associated with given host"; then
+			log "Туннель не ассоциирован с доменом."
+		else
+			log "Проблема с туннелем ($domain). Неверный ответ. Ответ: $response"
+		fi
+
 		return 1
 	fi
 }
@@ -162,15 +179,43 @@ start_vk_tunnel() {
 		exit 1
 	fi
 
-	echo "Запуск vk-tunnel на порту $INBOUNDPORT..."
+	log "Запуск vk-tunnel на порту $INBOUNDPORT..."
 
-	pkill -f "vk-tunnel --port=$INBOUNDPORT"
-	sleep 2
+	# получаем все PID процессов vk-tunnel с указанным портом
+	local pids=($(pgrep -f "vk-tunnel --port=$INBOUNDPORT"))
 
+	# если найдены процессы, убиваем их все
+	if [[ ${#pids[@]} -gt 0 ]]; then
+		echo "Найдено процессов vk-tunnel: ${#pids[@]}"
+		echo "PID процессов: ${pids[*]}"
+
+		for pid in "${pids[@]}"; do
+			echo "Убиваем процесс vk-tunnel с PID: $pid"
+			kill -9 "$pid" 2>/dev/null
+		done
+
+		# дополнительная проверка и принудительное убийство через pkill
+		pkill -f "vk-tunnel --port=$INBOUNDPORT" 2>/dev/null
+
+		sleep 2
+
+		# проверяем, что все процессы убиты
+		local remaining_pids=($(pgrep -f "vk-tunnel --port=$INBOUNDPORT"))
+
+		if [[ ${#remaining_pids[@]} -gt 0 ]]; then
+			echo "Предупреждение: остались процессы после убийства: ${remaining_pids[*]}"
+		else
+			echo "Все процессы vk-tunnel успешно убиты"
+		fi
+	else
+		echo "Активных процессов vk-tunnel не найдено"
+	fi
+
+	# запускаем новый процесс
 	vk-tunnel --port="$INBOUNDPORT" > "$LOG_FILE" 2>&1 &
 
 	# цикл проверки домена
-	echo "Ожидание появления домена в логах..."
+	log "Ожидание появления домена в логах..."
 	local domain
 
 	for ((i=1; i<=30; i++)); do
@@ -178,26 +223,26 @@ start_vk_tunnel() {
 		domain=$(get_current_domain)
 
 		if [[ -n "$domain" ]]; then
-			echo "Домен найден: $domain (попытка $i/30)"
+			log "Домен найден: $domain (попытка $i/30)"
 			break
 		fi
 
-		echo "Домен еще не появился в логах... (попытка $i/30)"
+		log "Домен еще не появился в логах... (попытка $i/30)"
 	done
 
 	if [[ -z "$domain" ]]; then
-		echo "Ошибка: домен не найден в логах после 30 секунд ожидания"
+		log "Ошибка: домен не найден в логах после 30 секунд ожидания"
 		return 1
 	fi
 
 	local vk_pid=$(pgrep -f "vk-tunnel --port=$INBOUNDPORT")
 
 	if [[ -z "$vk_pid" ]]; then
-		echo "Ошибка: vk-tunnel не запустился"
+		log "Ошибка: vk-tunnel не запустился"
 		return 1
 	fi
 
-	echo "vk-tunnel запущен (PID: $vk_pid)"
+	log "vk-tunnel запущен (PID: $vk_pid)"
 
 	return 0
 }
@@ -273,20 +318,20 @@ install() {
 
 # надзорный скрипт watchdog
 watchdog() {
-	echo "Запуск watchdog-проверки"
+	log "Запуск watchdog-проверки"
 
 	if ! read_config; then
-		echo "Ошибка: не удалось прочитать конфигурацию"
+		log "Ошибка: не удалось прочитать конфигурацию"
 		exit 1
 	fi
 
 	# чекаем туннель
 	if check_tunnel "$LAST_DOMAIN"; then
-		echo "Ничего не делаем, всё хорошо"
+		log "Ничего не делаем, всё хорошо"
 		exit 0
 	fi
 
-	echo "Обнаружена проблема с туннелем. Перезапуск..."
+	log "Обнаружена проблема с туннелем. Перезапуск..."
 
 	# рестарт туннеля
 	if ! start_vk_tunnel; then
@@ -297,27 +342,27 @@ watchdog() {
 	local new_domain=$(get_current_domain)
 
 	if [[ -z "$new_domain" ]]; then
-		echo "Ошибка: не удалось получить новый домен"
+		log "Ошибка: не удалось получить новый домен"
 		exit 1
 	fi
 
-	echo "Новый домен: $new_domain"
+	log "Новый домен: $new_domain"
 
 	# если домен изменился, обновляем файл конфиг
 	if [[ "$new_domain" != "$LAST_DOMAIN" ]]; then
-		echo "Домен изменился. Обновление файла подписки..."
+		log "Домен изменился. Обновление файла подписки..."
 
 		if upload_to_yandex_cloud "$new_domain"; then
 			LAST_DOMAIN="$new_domain"
 			write_config
 
-			echo "Файл подписки успешно обновлен"
+			log "Файл подписки успешно обновлен"
 		fi
 	else
-		echo "Домен не изменился"
+		log "Домен не изменился"
 	fi
 
-	echo "Watchdog проверка завершена"
+	log "Watchdog проверка завершена"
 }
 
 # скрипт запуска туннеля
