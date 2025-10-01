@@ -3,7 +3,7 @@
 # конфиг и лог файл
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$SCRIPT_DIR/settings.conf"
-LOG_FILE="/tmp/vk-tunnel.log"
+LOG_FILE="/tmp/vless-tunnel.log"
 SUBSCRIPTION_FILE="tunnel.txt"
 WSPATH="/"
 
@@ -79,7 +79,7 @@ create_subscription_file() {
 
 	cat > "/tmp/$SUBSCRIPTION_FILE" << EOF
 #profile-update-interval: 1
-#profile-title: base64:ZWFzeS12ay10dW5uZWw=
+#profile-title: base64:dmxlc3MtdHVubmVs
 $vless_link
 EOF
 
