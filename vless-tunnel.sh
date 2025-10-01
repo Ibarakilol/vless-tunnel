@@ -23,7 +23,8 @@ install_dependencies() {
 	# скачивание и установка AWS CLI v2
 	curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
 	unzip awscliv2.zip
-	./aws/install && rm -rf awscliv2.zip aws/
+	./aws/install
+	rm -rf awscliv2.zip aws/
 }
 
 # настройка awscli для s3 яндекса
@@ -268,7 +269,7 @@ install() {
 	echo
 
 	# установка зависимостей
-	install_dependencies
+	# install_dependencies
 
 	# настройка awscli
 	configure_aws
