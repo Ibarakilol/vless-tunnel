@@ -96,12 +96,7 @@ upload_to_yandex_cloud() {
 
 	if aws --endpoint-url=https://storage.yandexcloud.net s3 cp "/tmp/$SUBSCRIPTION_FILE" "s3://$BUCKET_NAME/" --cache-control "no-store" > /dev/null 2>&1; then
 		local file_url="https://storage.yandexcloud.net/$BUCKET_NAME/$SUBSCRIPTION_FILE"
-
-		echo ""
-		echo "================Файл подписки успешно загружен=================="
-		echo "$file_url"
-		echo "================================================================"
-		echo ""
+		echo "Файл подписки успешно загружен: $file_url"
 	else
 		echo "Ошибка загрузки файла в бакет"
 		return 1
@@ -180,8 +175,6 @@ start_vk_tunnel() {
 		exit 1
 	fi
 
-	log "Запуск vk-tunnel на порту $INBOUNDPORT..."
-
 	# получаем все PID процессов vk-tunnel с указанным портом
 	local pids=($(pgrep -f "vk-tunnel --port=$INBOUNDPORT"))
 
@@ -211,6 +204,8 @@ start_vk_tunnel() {
 	else
 		echo "Активных процессов vk-tunnel не найдено"
 	fi
+
+	log "Запуск vk-tunnel на порту $INBOUNDPORT..."
 
 	# запускаем новый процесс
 	vk-tunnel --port="$INBOUNDPORT" > "$LOG_FILE" 2>&1 &
@@ -295,7 +290,8 @@ install() {
 	write_config
 
 	# создаём и загружаем txt подписки в s3 яндекса
-	local file_url=$(upload_to_yandex_cloud "$domain")
+	local file_url
+	file_url=$(upload_to_yandex_cloud "$domain")
 
 	if [[ -z "$file_url" ]]; then
 		exit 1
@@ -314,7 +310,14 @@ install() {
 	(crontab -l 2>/dev/null | grep -v "$script_path"; echo "* * * * * /bin/bash '$script_path' --watch") | crontab -
 	echo "Задача добавлена в cron. Посмотреть можно через: crontab -e"
 
-	echo "Установка завершена. Логи: $LOG_FILE"
+	echo "Установка завершена. Логи: tail -f $LOG_FILE"
+
+	# отображение URL подписки после установки
+	if [[ -n "$file_url" ]]; then
+		echo "================URL подписки=================="
+		echo "$file_url"
+		echo "=============================================="
+	fi
 }
 
 # надзорный скрипт watchdog
