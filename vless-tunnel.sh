@@ -297,18 +297,18 @@ install() {
 		exit 1
 	fi
 
-	# добавляем в cron
-	local script_path="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
+	# # добавляем в cron
+	# local script_path="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
 
-	# Проверяем, существует ли файл скрипта
-	if [[ ! -f "$script_path" ]]; then
-		echo "Ошибка: скрипт не найден по пути: $script_path"
-		return 1
-	fi
+	# # Проверяем, существует ли файл скрипта
+	# if [[ ! -f "$script_path" ]]; then
+	# 	echo "Ошибка: скрипт не найден по пути: $script_path"
+	# 	return 1
+	# fi
 
-	echo "Добавление в cron: $script_path"
-	(crontab -l 2>/dev/null | grep -v "$script_path"; echo "* * * * * /bin/bash '$script_path' --watch") | crontab -
-	echo "Задача добавлена в cron. Посмотреть можно через: crontab -e"
+	# echo "Добавление в cron: $script_path"
+	# (crontab -l 2>/dev/null | grep -v "$script_path"; echo "* * * * * /bin/bash '$script_path' --watch") | crontab -
+	# echo "Задача добавлена в cron. Посмотреть можно через: crontab -e"
 
 	echo "Установка завершена. Логи: tail -f $LOG_FILE"
 
